@@ -10,7 +10,7 @@ client = TestClient(app)
 
 
 def test_health_check_root():
-    """Test GET / endpoint returns HeathCheck model."""
+    """Test GET / endpoint returns HealthCheck model."""
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
