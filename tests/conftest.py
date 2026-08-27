@@ -33,7 +33,7 @@ def mock_topology() -> Topology:
 
     admittance = AdmittanceSparse(
         from_equipment=[f"{i}.1" for i in range(1, 132)],
-        to_equipment=[f"{i+1}.1" for i in range(1, 132)],
+        to_equipment=[f"{i + 1}.1" for i in range(1, 132)],
         admittance_list=[(10.0, -20.0)] * 131,
     )
 

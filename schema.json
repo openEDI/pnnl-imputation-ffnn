@@ -1,0 +1,41 @@
+{
+  "description": "Static configuration parameters for the Imputation Federate.",
+  "properties": {
+    "name": {
+      "description": "Unique identifier for the federate instance",
+      "title": "Name",
+      "type": "string"
+    },
+    "model_name": {
+      "default": "ieee123",
+      "description": "Model architecture/feeder key (e.g. 'ieee123')",
+      "title": "Model Name",
+      "type": "string"
+    },
+    "model_path": {
+      "default": "",
+      "description": "Optional custom directory path to trained model and params",
+      "title": "Model Path",
+      "type": "string"
+    },
+    "deltat": {
+      "default": 0.1,
+      "description": "HELICS time step delta in seconds",
+      "minimum": 0.0,
+      "title": "Deltat",
+      "type": "number"
+    },
+    "end_time": {
+      "default": 86400.0,
+      "description": "Maximum simulation end time in seconds",
+      "minimum": 0.0,
+      "title": "End Time",
+      "type": "number"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "StaticInputs",
+  "type": "object"
+}
