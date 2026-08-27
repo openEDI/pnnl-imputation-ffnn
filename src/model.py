@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Created on Wed May 14 09:08:13 2025
 
 @author: mitr284
 """
 
-import numpy as np
-import os
-import opendssdirect as dss
-from opendssdirect.utils import Iterator
 import argparse
+import os
+
+import numpy as np
+import opendssdirect as dss
 
 
 def init_paths(args):
@@ -28,18 +27,14 @@ def init_opendss(args):
 
     dss.Text.Command("Clear")
     dss.Text.Command("Redirect master.dss")
-    dss.Text.Command('Solve')
+    dss.Text.Command("Solve")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Anonymize OpenDSS data.")
-    parser.add_argument(
-        "--model", help="model name: ieee123, SFO-P1U, ...")
-    parser.add_argument(
-        "--input", help="model path: ./opendss/master.dss")
-    parser.add_argument(
-        "--output", help="new model path: ./anon/opendss/")
+    parser = argparse.ArgumentParser(description="Anonymize OpenDSS data.")
+    parser.add_argument("--model", help="model name: ieee123, SFO-P1U, ...")
+    parser.add_argument("--input", help="model path: ./opendss/master.dss")
+    parser.add_argument("--output", help="new model path: ./anon/opendss/")
     args = parser.parse_args()
     feeder_name = args.model
     input = args.input
@@ -128,7 +123,7 @@ if __name__ == "__main__":
 
         for name, bus in zip(load_name_list, load_bus_list):
 
-            bus_eq = bus.split('.')[0]
+            bus_eq = bus.split(".")[0]
 
             bus_idx = bus_names.index(bus_eq)
 
@@ -137,12 +132,12 @@ if __name__ == "__main__":
             phases = dss.CktElement.NumPhases()
             per_phase_kw = dss.Loads.kW() / phases
 
-            if len(bus.split('.')) != 1:
+            if len(bus.split(".")) != 1:
                 for i in range(phases):
 
-                    cur_phase = int(bus.split('.')[i+1])
+                    cur_phase = int(bus.split(".")[i + 1])
 
-                    load_snapshot[bus_idx, cur_phase-1] = per_phase_kw
+                    load_snapshot[bus_idx, cur_phase - 1] = per_phase_kw
 
             elif phases == 3:
 
@@ -163,7 +158,7 @@ if __name__ == "__main__":
 
         for name, bus in zip(pv_name_list, pv_bus_list):
 
-            bus_eq = bus.split('.')[0]
+            bus_eq = bus.split(".")[0]
 
             if bus_eq in bus_names:
                 bus_idx = bus_names.index(bus_eq)
@@ -185,7 +180,7 @@ if __name__ == "__main__":
 
     print("Voltage shape:", vol_v.shape)
     print("PV injections (kW):", pv_total_kw.shape)
-    print('Load data:', load_total_kw.shape)
+    print("Load data:", load_total_kw.shape)
     np.save(f"{output}/voltage.npy", vol_v)
     np.save(f"{output}/injection.npy", pv_total_kw)
     np.save(f"{output}/load.npy", load_total_kw)

@@ -1,39 +1,49 @@
-# Imputation
+# Imputation Federate
 
-This imputation algorithm creates a dataset to train on provided OpenDSS model and then the data is used for training and testing, this can later be used for predicting imputed data.
+OEDISI Feed-Forward Neural Network Imputation Federate for power system injection prediction and measurement imputation in HELICS co-simulations.
 
 ## Setup
 
-This neural network architecture represents a sophisticated deep learning approach specifically designed for power system injection prediction tasks.!This feed-forward neural network employs a progressive compression methodology combined with comprehensive regularization techniques to achieve  robust predictive performance while maintaining computational efficiency.
-
+Install dependencies and create a virtual environment using `uv`:
 
 ```shell
-git clone https://github.com/pnnl/oedisi_dopf.git
-cd oedisi_dopf/imputation
-poetry update
+uv sync --extra dev --extra test
 ```
 
 ## Run
 
-### Prepare Training Data
-The first step is to extract and develop a training dataset. Run the ./src/data_for_imputation_new.py command to prepapre the training dataset.
+### Run Federate Server
+Start the FastAPI component configuration server:
 
 ```shell
-poetry run python src/model.py --model=ieee123 --input=opendss/
+uv run imputation-server
 ```
 
+### Run HELICS Simulation
+Execute the standalone federate simulation loop:
+
+```shell
+uv run imputation-sim
+```
+
+### Prepare Training Data
+Extract training data from OpenDSS model definitions:
+
+```shell
+uv run python src/model.py --model=ieee123 --input=opendss/
+```
 
 ### Train Model
-Once the input data has been extracted, the InjPred_Train.py code is run to train the model
+Train the deep neural network model checkpoint:
 
 ```shell
-poetry run python src/train.py --model=ieee123
+uv run python src/train.py --model=ieee123 --output=output/
 ```
-### Imputation Prediction
-To predict the imputed data, the Injection_Prediction.py is run. 
-```
-### Evaluate 
+
+### Testing
+Run unit and integration tests:
 
 ```shell
-poetry run python src/train.py --model=ieee123 --ouput=output/
+uv run pytest
 ```
+
