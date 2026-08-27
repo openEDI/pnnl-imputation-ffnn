@@ -1,11 +1,13 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import helics as h
 import numpy as np
 from oedisi.types.common import BrokerConfig
 from oedisi.types.data_types import Injection, PowersImaginary, PowersReal, Topology, VoltagesMagnitude
+from oedisi.types.helics_config import HELICSBrokerConfig
+from pydantic import BaseModel
 
 from .predictor import PowerSystemInjectionPredictor
 from .schemas import ComponentDefinition, StaticInputs
@@ -13,6 +15,93 @@ from .schemas import ComponentDefinition, StaticInputs
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
+
+T = TypeVar("T", bound=BaseModel)
+
+
+# =============================================================================
+# HELICS & OEDISI Interface Helpers
+# =============================================================================
+
+
+def create_federate_info(
+    static_cfg: StaticInputs,
+    broker_config: BrokerConfig | None = None,
+    core_type: int = h.HELICS_CORE_TYPE_ZMQ,
+    broker_name: str | None = None,
+) -> Any:
+    """Construct and configure a HELICS FederateInfo object from StaticInputs and BrokerConfig."""
+    fedinfo = h.helicsCreateFederateInfo()
+    fedinfo.core_name = static_cfg.name
+    fedinfo.core_type = core_type
+    fedinfo.core_init = "--federates=1"
+
+    # Apply broker parameters via HELICSBrokerConfig if provided
+    if broker_name is not None:
+        h.helicsFederateInfoSetBroker(fedinfo, broker_name)
+    elif broker_config is not None:
+        broker_meta = HELICSBrokerConfig.from_rest_config(broker_config)
+        if broker_meta.host is not None:
+            h.helicsFederateInfoSetBroker(fedinfo, broker_meta.host)
+        if broker_meta.port is not None:
+            h.helicsFederateInfoSetBrokerPort(fedinfo, broker_meta.port)
+
+    # Apply configuration defaults (core_type, core_init, broker settings) from StaticInputs
+    static_cfg.apply_to_federate_info(fedinfo)
+
+    # Set simulation time delta property
+    h.helicsFederateInfoSetTimeProperty(fedinfo, h.helics_property_time_delta, static_cfg.deltat)
+
+    return fedinfo
+
+
+def register_subscription(vfed: Any, key: str, optional: bool = True) -> Any:
+    """Register a HELICS subscription handle with optional connection flags."""
+    sub = h.helicsFederateRegisterSubscription(vfed, key, "")
+    if optional:
+        h.helicsInputSetOption(sub, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+    return sub
+
+
+def register_publication(vfed: Any, key: str, data_type: int = h.HELICS_DATA_TYPE_STRING) -> Any:
+    """Register a HELICS publication handle."""
+    return h.helicsFederateRegisterPublication(vfed, key, data_type, "")
+
+
+def get_subscription_data(input_handle: Any, model_cls: type[T]) -> T | None:
+    """Read, parse, and validate updated data from a HELICS subscription handle using Pydantic."""
+    if input_handle is not None and h.helicsInputIsUpdated(input_handle):
+        raw = h.helicsInputGetString(input_handle)
+        if raw:
+            try:
+                return model_cls.model_validate_json(raw)
+            except Exception as e:
+                logger.error(f"Error parsing {model_cls.__name__} from subscription: {e}")
+    return None
+
+
+def publish_data(pub_handle: Any, data: BaseModel | None) -> None:
+    """Serialize a Pydantic model to JSON and publish to a HELICS publication handle."""
+    if pub_handle is not None and data is not None:
+        h.helicsPublicationPublishString(pub_handle, data.model_dump_json())
+
+
+def cleanup_federate(vfed: Any) -> None:
+    """Safely disconnect and free a HELICS federate handle and close the HELICS library."""
+    if vfed is not None:
+        logger.info("Disconnecting and freeing HELICS federate allocations...")
+        try:
+            h.helicsFederateDisconnect(vfed)
+            h.helicsFederateFree(vfed)
+        except Exception as e:
+            logger.warning(f"Error during federate disconnect: {e}")
+    h.helicsCloseLibrary()
+    logger.info("HELICS library closed.")
+
+
+# =============================================================================
+# Federate Class & Lifecycle
+# =============================================================================
 
 
 class Subscriptions:
@@ -90,68 +179,45 @@ class ImputationFederate:
         broker_name: str | None = None,
     ) -> None:
         """Create and configure HELICS Value Federate."""
-        fedinfo = h.helicsCreateFederateInfo()
-        fedinfo.core_name = self.static.name
-        fedinfo.core_type = core_type
-        fedinfo.core_init = "--federates=1"
-
-        if broker_name is not None:
-            h.helicsFederateInfoSetBroker(fedinfo, broker_name)
-        elif broker_config is not None:
-            h.helicsFederateInfoSetBroker(fedinfo, broker_config.broker_ip)
-            h.helicsFederateInfoSetBrokerPort(fedinfo, broker_config.broker_port)
-
-        h.helicsFederateInfoSetTimeProperty(fedinfo, h.helics_property_time_delta, self.static.deltat)
-
+        fedinfo = create_federate_info(
+            self.static, broker_config=broker_config, core_type=core_type, broker_name=broker_name
+        )
         self.vfed = h.helicsCreateValueFederate(self.static.name, fedinfo)
         logger.info(f"Created HELICS value federate '{self.static.name}'")
 
     def _register_interfaces(self) -> None:
-        """Register subscriptions and publications."""
+        """Register subscriptions and publications using helper functions."""
         dyn_in = self.config.dynamic_inputs
         dyn_out = self.config.dynamic_outputs
 
         # Subscriptions
         if dyn_in.topology:
-            self.sub.topology = h.helicsFederateRegisterSubscription(self.vfed, dyn_in.topology, "")
-            h.helicsInputSetOption(self.sub.topology, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+            self.sub.topology = register_subscription(self.vfed, dyn_in.topology)
 
         if dyn_in.voltages_magnitude:
-            self.sub.voltages_magnitude = h.helicsFederateRegisterSubscription(self.vfed, dyn_in.voltages_magnitude, "")
-            h.helicsInputSetOption(self.sub.voltages_magnitude, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+            self.sub.voltages_magnitude = register_subscription(self.vfed, dyn_in.voltages_magnitude)
 
         if dyn_in.injections:
-            self.sub.injections = h.helicsFederateRegisterSubscription(self.vfed, dyn_in.injections, "")
-            h.helicsInputSetOption(self.sub.injections, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+            self.sub.injections = register_subscription(self.vfed, dyn_in.injections)
 
         if dyn_in.powers_real:
-            self.sub.powers_real = h.helicsFederateRegisterSubscription(self.vfed, dyn_in.powers_real, "")
-            h.helicsInputSetOption(self.sub.powers_real, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+            self.sub.powers_real = register_subscription(self.vfed, dyn_in.powers_real)
 
         if dyn_in.powers_imag:
-            self.sub.powers_imag = h.helicsFederateRegisterSubscription(self.vfed, dyn_in.powers_imag, "")
-            h.helicsInputSetOption(self.sub.powers_imag, h.HELICS_HANDLE_OPTION_CONNECTION_OPTIONAL, 1)
+            self.sub.powers_imag = register_subscription(self.vfed, dyn_in.powers_imag)
 
         # Publications
         if dyn_out.injections:
-            self.pub.injections = h.helicsFederateRegisterPublication(
-                self.vfed, dyn_out.injections, h.HELICS_DATA_TYPE_STRING, ""
-            )
+            self.pub.injections = register_publication(self.vfed, dyn_out.injections)
 
         if dyn_out.voltages_magnitude:
-            self.pub.voltages_magnitude = h.helicsFederateRegisterPublication(
-                self.vfed, dyn_out.voltages_magnitude, h.HELICS_DATA_TYPE_STRING, ""
-            )
+            self.pub.voltages_magnitude = register_publication(self.vfed, dyn_out.voltages_magnitude)
 
         if dyn_out.powers_real:
-            self.pub.powers_real = h.helicsFederateRegisterPublication(
-                self.vfed, dyn_out.powers_real, h.HELICS_DATA_TYPE_STRING, ""
-            )
+            self.pub.powers_real = register_publication(self.vfed, dyn_out.powers_real)
 
         if dyn_out.powers_imag:
-            self.pub.powers_imag = h.helicsFederateRegisterPublication(
-                self.vfed, dyn_out.powers_imag, h.HELICS_DATA_TYPE_STRING, ""
-            )
+            self.pub.powers_imag = register_publication(self.vfed, dyn_out.powers_imag)
 
         logger.info("Successfully registered HELICS subscriptions and publications")
 
@@ -174,47 +240,21 @@ class ImputationFederate:
                     break
 
                 # 1. Update Topology (read-only structural reference)
-                if self.sub.topology is not None and h.helicsInputIsUpdated(self.sub.topology):
-                    raw_topo = h.helicsInputGetString(self.sub.topology)
-                    if raw_topo:
-                        try:
-                            topo_data = Topology.model_validate_json(raw_topo)
-                            self.predictor.init_from_topology(topo_data)
-                        except Exception as e:
-                            logger.error(f"Error parsing topology: {e}")
+                if (topo := get_subscription_data(self.sub.topology, Topology)) is not None:
+                    self.predictor.init_from_topology(topo)
 
                 # 2. Update Measurement Arrays
-                if self.sub.voltages_magnitude is not None and h.helicsInputIsUpdated(self.sub.voltages_magnitude):
-                    raw_v = h.helicsInputGetString(self.sub.voltages_magnitude)
-                    if raw_v:
-                        try:
-                            latest_voltages = VoltagesMagnitude.model_validate_json(raw_v)
-                        except Exception as e:
-                            logger.error(f"Error parsing voltages_magnitude: {e}")
+                if (v := get_subscription_data(self.sub.voltages_magnitude, VoltagesMagnitude)) is not None:
+                    latest_voltages = v
 
-                if self.sub.injections is not None and h.helicsInputIsUpdated(self.sub.injections):
-                    raw_inj = h.helicsInputGetString(self.sub.injections)
-                    if raw_inj:
-                        try:
-                            latest_injections = Injection.model_validate_json(raw_inj)
-                        except Exception as e:
-                            logger.error(f"Error parsing injections: {e}")
+                if (inj := get_subscription_data(self.sub.injections, Injection)) is not None:
+                    latest_injections = inj
 
-                if self.sub.powers_real is not None and h.helicsInputIsUpdated(self.sub.powers_real):
-                    raw_pr = h.helicsInputGetString(self.sub.powers_real)
-                    if raw_pr:
-                        try:
-                            latest_powers_real = PowersReal.model_validate_json(raw_pr)
-                        except Exception as e:
-                            logger.error(f"Error parsing powers_real: {e}")
+                if (pr := get_subscription_data(self.sub.powers_real, PowersReal)) is not None:
+                    latest_powers_real = pr
 
-                if self.sub.powers_imag is not None and h.helicsInputIsUpdated(self.sub.powers_imag):
-                    raw_pi = h.helicsInputGetString(self.sub.powers_imag)
-                    if raw_pi:
-                        try:
-                            latest_powers_imag = PowersImaginary.model_validate_json(raw_pi)
-                        except Exception as e:
-                            logger.error(f"Error parsing powers_imag: {e}")
+                if (pi := get_subscription_data(self.sub.powers_imag, PowersImaginary)) is not None:
+                    latest_powers_imag = pi
 
                 # 3. Perform Imputation & Publish Outputs
                 if latest_voltages is not None:
@@ -242,20 +282,13 @@ class ImputationFederate:
                     imputed_voltages = self.predictor.pack_imputed_voltages(latest_voltages, predicted_inj)
 
                     # Publish to downstream algorithm federates
-                    if self.pub.injections is not None:
-                        h.helicsPublicationPublishString(self.pub.injections, imputed_injections.model_dump_json())
+                    publish_data(self.pub.injections, imputed_injections)
+                    publish_data(self.pub.voltages_magnitude, imputed_voltages)
 
-                    if self.pub.voltages_magnitude is not None:
-                        h.helicsPublicationPublishString(
-                            self.pub.voltages_magnitude, imputed_voltages.model_dump_json()
-                        )
+                    if imputed_injections.power_real is not None:
+                        publish_data(self.pub.powers_real, imputed_injections.power_real)
 
-                    if self.pub.powers_real is not None and imputed_injections.power_real is not None:
-                        h.helicsPublicationPublishString(
-                            self.pub.powers_real, imputed_injections.power_real.model_dump_json()
-                        )
-
-                    if self.pub.powers_imag is not None and imputed_injections.power_imaginary is not None:
+                    if imputed_injections.power_imaginary is not None:
                         # If latest_powers_imag was supplied, preserve its scaling or use imputed reactive power
                         if latest_powers_imag is not None and len(latest_powers_imag.values) == len(
                             imputed_injections.power_imaginary.values
@@ -263,7 +296,7 @@ class ImputationFederate:
                             pub_imag = latest_powers_imag
                         else:
                             pub_imag = imputed_injections.power_imaginary
-                        h.helicsPublicationPublishString(self.pub.powers_imag, pub_imag.model_dump_json())
+                        publish_data(self.pub.powers_imag, pub_imag)
 
                 granted_time = h.helicsFederateRequestTime(self.vfed, h.HELICS_TIME_MAXTIME)
 
@@ -276,15 +309,8 @@ class ImputationFederate:
     def destroy(self) -> None:
         """Clean up HELICS resources and disconnect federate."""
         if self.vfed is not None:
-            logger.info("Disconnecting and freeing HELICS federate allocations...")
-            try:
-                h.helicsFederateDisconnect(self.vfed)
-                h.helicsFederateFree(self.vfed)
-            except Exception as e:
-                logger.warning(f"Error during federate disconnect: {e}")
+            cleanup_federate(self.vfed)
             self.vfed = None
-        h.helicsCloseLibrary()
-        logger.info("HELICS library closed.")
 
 
 def run_simulator(broker_config: BrokerConfig | None = None) -> None:

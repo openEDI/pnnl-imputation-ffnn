@@ -10,7 +10,7 @@ import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from oedisi.componentframework.system_configuration import ComponentStruct
-from oedisi.types.common import BrokerConfig, DefaultFileNames, HeathCheck, ServerReply
+from oedisi.types.common import BrokerConfig, DefaultFileNames, HealthCheck, ServerReply
 
 from .federate import run_simulator
 from .schemas import StaticInputs
@@ -35,7 +35,7 @@ def read_root() -> JSONResponse:
         except socket.gaierror:
             pass
 
-    response = HeathCheck(hostname=hostname, host_ip=host_ip).model_dump()
+    response = HealthCheck(hostname=hostname, host_ip=host_ip).model_dump()
     return JSONResponse(response, 200)
 
 
