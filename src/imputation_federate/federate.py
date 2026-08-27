@@ -46,8 +46,9 @@ def create_federate_info(
         if broker_meta.port is not None:
             h.helicsFederateInfoSetBrokerPort(fedinfo, broker_meta.port)
 
-    # Apply configuration defaults (core_type, core_init, broker settings) from StaticInputs
-    static_cfg.apply_to_federate_info(fedinfo)
+    # Apply configuration defaults (core_type, core_init, broker settings) if supported
+    if hasattr(static_cfg, "apply_to_federate_info"):
+        static_cfg.apply_to_federate_info(fedinfo)
 
     # Set simulation time delta property
     h.helicsFederateInfoSetTimeProperty(fedinfo, h.helics_property_time_delta, static_cfg.deltat)

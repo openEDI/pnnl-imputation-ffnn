@@ -5,11 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from oedisi.types.common import DefaultFileNames
-from oedisi.types.helics_config import HELICSFederateConfig
 from pydantic import BaseModel, Field
 
 
-class StaticInputs(HELICSFederateConfig):
+class StaticInputs(BaseModel):
     """Static configuration parameters for the Imputation Federate."""
 
     name: str = Field(..., description="Unique identifier for the federate instance")
@@ -17,12 +16,33 @@ class StaticInputs(HELICSFederateConfig):
     model_path: str = Field("", description="Optional custom directory path to trained model and params")
     deltat: float = Field(0.1, ge=0.0, description="HELICS time step delta in seconds")
     end_time: float = Field(86400.0, ge=0.0, description="Maximum simulation end time in seconds")
-    run_freq_sec: float = Field(900.0, ge=0.0, description="Execution frequency in seconds")
 
     model_config = {
-        "title": "ImputationConfig",
+        "title": "StaticInputs",
         "populate_by_name": True,
     }
+
+    @classmethod
+    def generate_json_schema(cls, target_path: Path | str = "schema.json") -> Path:
+        """Generate schema.json file from StaticInputs model.
+
+        Args:
+            target_path: Destination path to write schema.json.
+
+        Returns:
+            Resolved Path of the written schema file.
+        """
+        path = Path(target_path).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        schema_dict = cls.model_json_schema()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(schema_dict, f, indent=2)
+            f.write("\n")
+        return path
+
+
+# Alias for compatibility with OEDISI component parameters standard
+ComponentParameters = StaticInputs
 
 
 class DynamicInputs(BaseModel):

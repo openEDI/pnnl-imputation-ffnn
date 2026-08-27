@@ -122,7 +122,6 @@ if __name__ == "__main__":
         load_snapshot = np.zeros((n_buses, max_phases))
 
         for name, bus in zip(load_name_list, load_bus_list):
-
             bus_eq = bus.split(".")[0]
 
             bus_idx = bus_names.index(bus_eq)
@@ -134,15 +133,12 @@ if __name__ == "__main__":
 
             if len(bus.split(".")) != 1:
                 for i in range(phases):
-
                     cur_phase = int(bus.split(".")[i + 1])
 
                     load_snapshot[bus_idx, cur_phase - 1] = per_phase_kw
 
             elif phases == 3:
-
                 for p in range(phases):
-
                     # load_snapshot[bus_idx, phase - 1] = per_phase_kw
                     load_snapshot[bus_idx, p] = per_phase_kw
         load_total_kw.append(load_snapshot.copy())
@@ -157,7 +153,6 @@ if __name__ == "__main__":
         # FIX NEEDED SIMILAR TO LOAD
 
         for name, bus in zip(pv_name_list, pv_bus_list):
-
             bus_eq = bus.split(".")[0]
 
             if bus_eq in bus_names:
@@ -202,7 +197,6 @@ if __name__ == "__main__":
             r_matrix = np.array(r_flat).reshape(n_phases, n_phases)
             x_matrix = np.array(x_flat).reshape(n_phases, n_phases)
         except Exception:
-
             r_matrix = np.eye(n_phases) * dss.Lines.R1()
             x_matrix = np.eye(n_phases) * dss.Lines.X1()
 
