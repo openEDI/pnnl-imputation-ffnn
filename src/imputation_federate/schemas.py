@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from oedisi.types.common import DefaultFileNames
+from oedisi.types.helics_config import HELICSFederateConfig
 from pydantic import BaseModel, Field
 
 
-class StaticInputs(BaseModel):
+class StaticInputs(HELICSFederateConfig):
     """Static configuration parameters for the Imputation Federate."""
 
     name: str = Field(..., description="Unique identifier for the federate instance")
@@ -20,6 +21,7 @@ class StaticInputs(BaseModel):
 
     model_config = {
         "title": "ImputationConfig",
+        "populate_by_name": True,
     }
 
 
@@ -49,7 +51,7 @@ class ComponentDefinition(BaseModel):
 
     static_inputs: StaticInputs
     dynamic_inputs: DynamicInputs
-    dynamic_outputs: DynamicOutputs = Field(default_factory=lambda: DynamicOutputs())
+    dynamic_outputs: DynamicOutputs = Field(default_factory=DynamicOutputs)
 
     @classmethod
     def from_build_files(
