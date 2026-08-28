@@ -1,0 +1,175 @@
+{
+  "name": "pnnl_imputation_ieee123",
+  "components": [
+    {
+      "name": "feeder",
+      "type": "Feeder",
+      "parameters": {
+        "use_smartds": false,
+        "profile_location": "gadal_ieee123/profiles",
+        "opendss_location": "gadal_ieee123/qsts",
+        "start_date": "2017-05-01 00:00:00",
+        "number_of_timesteps": 96,
+        "run_freq_sec": 900,
+        "topology_output": "../../outputs/topology.json",
+        "use_sparse_admittance": true
+      }
+    },
+    {
+      "name": "sensor_voltage_magnitude",
+      "type": "MeasurementComponent",
+      "parameters": {
+        "additive_noise_stddev": 0.02,
+        "multiplicative_noise_stddev": 0.01,
+        "measurement_file": "../feeder/sensors/sensors.json"
+      }
+    },
+    {
+      "name": "sensor_power_real",
+      "type": "MeasurementComponent",
+      "parameters": {
+        "additive_noise_stddev": 0.0,
+        "multiplicative_noise_stddev": 0.0,
+        "measurement_file": "../feeder/sensors/sensors.json"
+      }
+    },
+    {
+      "name": "sensor_power_imag",
+      "type": "MeasurementComponent",
+      "parameters": {
+        "additive_noise_stddev": 0.0,
+        "multiplicative_noise_stddev": 0.0,
+        "measurement_file": "../feeder/sensors/sensors.json"
+      }
+    },
+    {
+      "name": "imputation",
+      "type": "ImputationComponent",
+      "parameters": {
+        "name": "imputation",
+        "model_name": "ieee123",
+        "deltat": 0.1,
+        "end_time": 86400.0
+      }
+    },
+    {
+      "name": "lindistflow",
+      "type": "LinDistFlowComponent",
+      "parameters": {
+        "deltat": 0.1,
+        "pf_flag": true,
+        "control_type": 2
+      }
+    },
+    {
+      "name": "recorder_voltage_magnitude",
+      "type": "Recorder",
+      "parameters": {
+        "feather_filename": "../../outputs/voltage_mag.feather",
+        "csv_filename": "../../outputs/voltage_mag.csv"
+      }
+    },
+    {
+      "name": "recorder_opf_voltage_magnitude",
+      "type": "Recorder",
+      "parameters": {
+        "feather_filename": "../../outputs/opf_voltage_mag.feather",
+        "csv_filename": "../../outputs/opf_voltage_mag.csv"
+      }
+    },
+    {
+      "name": "recorder_power_real",
+      "type": "Recorder",
+      "parameters": {
+        "feather_filename": "../../outputs/power_real.feather",
+        "csv_filename": "../../outputs/power_real.csv"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "feeder",
+      "source_port": "voltages_magnitude",
+      "target": "sensor_voltage_magnitude",
+      "target_port": "subscription"
+    },
+    {
+      "source": "feeder",
+      "source_port": "powers_real",
+      "target": "sensor_power_real",
+      "target_port": "subscription"
+    },
+    {
+      "source": "feeder",
+      "source_port": "powers_imag",
+      "target": "sensor_power_imag",
+      "target_port": "subscription"
+    },
+    {
+      "source": "feeder",
+      "source_port": "topology",
+      "target": "imputation",
+      "target_port": "topology"
+    },
+    {
+      "source": "feeder",
+      "source_port": "topology",
+      "target": "lindistflow",
+      "target_port": "topology"
+    },
+    {
+      "source": "sensor_voltage_magnitude",
+      "source_port": "publication",
+      "target": "imputation",
+      "target_port": "voltages_magnitude"
+    },
+    {
+      "source": "sensor_power_real",
+      "source_port": "publication",
+      "target": "imputation",
+      "target_port": "powers_real"
+    },
+    {
+      "source": "sensor_power_imag",
+      "source_port": "publication",
+      "target": "imputation",
+      "target_port": "powers_imag"
+    },
+    {
+      "source": "imputation",
+      "source_port": "injections",
+      "target": "lindistflow",
+      "target_port": "injections"
+    },
+    {
+      "source": "imputation",
+      "source_port": "voltages_magnitude",
+      "target": "lindistflow",
+      "target_port": "voltages_magnitude"
+    },
+    {
+      "source": "lindistflow",
+      "source_port": "change_commands",
+      "target": "feeder",
+      "target_port": "change_commands"
+    },
+    {
+      "source": "lindistflow",
+      "source_port": "opf_voltages_magnitude",
+      "target": "recorder_opf_voltage_magnitude",
+      "target_port": "subscription"
+    },
+    {
+      "source": "feeder",
+      "source_port": "voltages_magnitude",
+      "target": "recorder_voltage_magnitude",
+      "target_port": "subscription"
+    },
+    {
+      "source": "feeder",
+      "source_port": "powers_real",
+      "target": "recorder_power_real",
+      "target_port": "subscription"
+    }
+  ]
+}
